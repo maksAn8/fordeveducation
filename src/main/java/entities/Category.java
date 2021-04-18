@@ -6,6 +6,7 @@ import lombok.*;
 @Setter
 @EqualsAndHashCode
 @AllArgsConstructor
+@NoArgsConstructor
 @ToString
 public class Category {
     private long id;
