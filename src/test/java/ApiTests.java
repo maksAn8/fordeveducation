@@ -1,16 +1,21 @@
 import com.google.gson.Gson;
 import entities.Category;
 import entities.Pet;
+import entities.ErrorResponse;
 import entities.User;
 import io.restassured.http.ContentType;
+import io.restassured.module.jsv.JsonSchemaValidator;
 import io.restassured.response.Response;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.Collections;
-import java.util.Random;
+import java.math.BigInteger;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
+import static io.restassured.RestAssured.get;
 import static io.restassured.RestAssured.given;
 
 public class ApiTests {
@@ -22,7 +27,7 @@ public class ApiTests {
 
         System.out.println("I preparing test data...");
         Pet petToAdd = Pet.builder()
-                .id(new Random().nextInt(3))
+                .id(BigInteger.valueOf(new Random().nextInt(3)))
                 .category(catCategory)
                 .name("Jozzy")
                 .photoUrls(Collections.singletonList("urls"))
@@ -56,7 +61,7 @@ public class ApiTests {
 
         System.out.println("I preparing test data...");
         Pet petToAdd = Pet.builder()
-                .id(new Random().nextInt(3))
+                .id(BigInteger.valueOf(new Random().nextInt(3)))
                 .category(catCategory)
                 .name("Jozzy")
                 .photoUrls(Collections.singletonList("urls"))
@@ -76,7 +81,7 @@ public class ApiTests {
         System.out.println("Response: " + addingPetResponse.asString());
 
         Pet addedPetResponse = addingPetResponse.as(Pet.class);
-        long petId = addedPetResponse.getId();
+        long petId = addedPetResponse.getId().longValue();
 
         petToAdd.setName("Qwerty");
         Pet changedPet = petToAdd;
@@ -95,13 +100,13 @@ public class ApiTests {
     }
 
     @Test
-    public void checkPetName() {
+    public void checkPetName() throws InterruptedException {
         Category dogCategory = new Category(1337, "Dogs");
 
         System.out.println("Creating pet");
 
         Pet petToAdd = Pet.builder()
-                .id(new Random().nextInt(10))
+                .id(BigInteger.valueOf(new Random().nextInt(10)))
                 .category(dogCategory)
                 .name(RandomStringUtils.randomAlphabetic(7))
                 .photoUrls(Collections.singletonList("urls"))
@@ -122,13 +127,15 @@ public class ApiTests {
         System.out.println("Response for adding: " + addPetResponse.asString());
 
         Pet addedPet = addPetResponse.as(Pet.class);
-        long id = addedPet.getId();
+        long id = addedPet.getId().longValue();
+
+        TimeUnit.SECONDS.sleep(3);
 
         Response getPetByIdResponse = given()
                 .baseUri(BASE_URL)
                 .contentType(ContentType.JSON)
                 .when()
-                .get("/pet/" + (int)id)
+                .get("/pet/" + id)
                 .thenReturn();
 
         System.out.println("Response for get: " + getPetByIdResponse.asString());
@@ -169,12 +176,151 @@ public class ApiTests {
                 .contentType(ContentType.JSON)
                 .when()
                 .get("/user/" + user.getUsername())
-                .andReturn();
+                .then()
+                .body(JsonSchemaValidator.matchesJsonSchemaInClasspath("UserSchema.json"))
+                .extract().response();
         System.out.println("Get user response: " + getUserResponse.asString());
 
         User createdUser = getUserResponse.as(User.class);
 
         Assert.assertEquals("Wrong status code", 200, createUserResponse.getStatusCode());
         Assert.assertEquals("Emails mismatch", user.getEmail(), createdUser.getEmail());
+    }
+
+    @Test
+    public void createPetWithInvalidId() {
+        Category dogCategory = new Category(123, "Dogs");
+
+        System.out.println("Creating pet");
+        Pet petWithInvalidId = Pet.builder()
+                .id(new BigInteger("12345678901234567890"))
+                .category(dogCategory)
+                .name(RandomStringUtils.randomAlphabetic(7))
+                .photoUrls(Collections.singletonList("urls"))
+                .tags(null)
+                .status("sold")
+                .build();
+        System.out.println("Pet created");
+
+        Response addPetResponse = given()
+                .baseUri(BASE_URL)
+                .basePath("/pet")
+                .contentType(ContentType.JSON)
+                .body(petWithInvalidId)
+                .when()
+                .post();
+
+        ErrorResponse invalidRequestResponse = addPetResponse.as(ErrorResponse.class);
+
+        Assert.assertEquals("Status code is not 500", 500, invalidRequestResponse.getCode());
+        Assert.assertEquals("Response message incorrect", "something bad happened", invalidRequestResponse.getMessage());
+    }
+
+    @Test
+    public void createAndDeletePet() throws InterruptedException {
+        Pet pet = createPet(BigInteger.valueOf(new Random().nextInt(10)), 123, "Dogs", "sold");
+
+        System.out.println("Adding pet...");
+        Response addPetResponse = given()
+                .baseUri(BASE_URL)
+                .basePath("/pet")
+                .contentType(ContentType.JSON)
+                .body(pet)
+                .when()
+                .post();
+
+        System.out.println("Response for POST: " + addPetResponse.asString());
+        Assert.assertEquals("Status code is not 200", 200, addPetResponse.getStatusCode());
+
+        TimeUnit.SECONDS.sleep(5);
+
+        System.out.println("Deleting added pet...");
+        Response deletePet = given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .when()
+                .delete("/pet/" + pet.getId())
+                .thenReturn();
+
+        System.out.println("Response for DELETE: " + deletePet.asString());
+        Assert.assertEquals("Status code is not 200", 200, deletePet.getStatusCode());
+
+        TimeUnit.SECONDS.sleep(5);
+
+        System.out.println("Checking if there is no such pet by id...");
+        Response getPetById = given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .when()
+                .get("/pet/" + pet.getId())
+                .thenReturn();
+
+        ErrorResponse errorResponse = getPetById.as(ErrorResponse.class);
+        System.out.println("Response for GET: " + getPetById.asString());
+        Assert.assertEquals("Status code is not 404", 404, getPetById.getStatusCode());
+        Assert.assertEquals("Response message incorrect", "Pet not found", errorResponse.getMessage());
+    }
+
+    @Test
+    public void getAllSoldPets() throws InterruptedException {
+        Pet soldPet = createPet(BigInteger.valueOf(new Random().nextInt(10)), 123, "Dogs", "sold");
+
+        Response addPetResponse = given()
+                .baseUri(BASE_URL)
+                .basePath("/pet")
+                .contentType(ContentType.JSON)
+                .body(soldPet)
+                .when()
+                .post();
+
+        System.out.println("Response for POST:" + addPetResponse.asString());
+
+        TimeUnit.SECONDS.sleep(5);
+        Response getSoldPetsResponse = given()
+                .baseUri(BASE_URL)
+                .contentType(ContentType.JSON)
+                .when()
+                .get("/pet/findByStatus/?status=sold")
+                .thenReturn();
+
+        List<Pet> soldPetsList = Arrays.stream(getSoldPetsResponse.as(Pet[].class))
+                .filter(pet -> pet.getId().equals(soldPet.getId()))
+                .collect(Collectors.toList());
+        Assert.assertEquals("Id is not unique", 1, soldPetsList.size());
+        Assert.assertEquals("Name mismatch", soldPet.getName(), soldPetsList.get(0).getName());
+    }
+
+    @Test
+    public void findFreeId() {
+        int freeIds = 0;
+        for(int i = 1; i <= 100; i++) {
+            int getPetByIdResponse = given()
+                    .baseUri(BASE_URL)
+                    .contentType(ContentType.JSON)
+                    .when()
+                    .get("/pet/" + i)
+                    .then().extract().statusCode();
+            if(getPetByIdResponse == 404) {
+                freeIds++;
+            }
+        }
+        System.out.println("Free ID's amount = " + freeIds);
+    }
+
+    private Pet createPet(BigInteger id, int categoryId, String categoryName, String petStatus) {
+        Category dogCategory = new Category(categoryId, categoryName);
+
+        System.out.println("Creating pet");
+        Pet pet = Pet.builder()
+                .id(id)
+                .category(dogCategory)
+                .name(RandomStringUtils.randomAlphabetic(7))
+                .photoUrls(Collections.singletonList("urls"))
+                .tags(null)
+                .status(petStatus)
+                .build();
+        System.out.println("Pet created");
+
+        return pet;
     }
 }
