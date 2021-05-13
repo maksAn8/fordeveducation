@@ -33,7 +33,7 @@ public class PetSteps {
                 .category(catCategory)
                 .name("Jozzy")
                 .photoUrls(Collections.singletonList("urls"))
-                .tags(null)
+                .tags(Collections.singletonList(catCategory))
                 .status("available")
                 .build();
         System.out.println("Body to send: " + new Gson().toJson(petToAdd));
