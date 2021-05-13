@@ -1,7 +1,7 @@
 import com.google.gson.Gson;
 import entities.Category;
-import entities.Pet;
 import entities.ErrorResponse;
+import entities.Pet;
 import entities.User;
 import io.restassured.http.ContentType;
 import io.restassured.module.jsv.JsonSchemaValidator;
@@ -11,11 +11,13 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.math.BigInteger;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static io.restassured.RestAssured.get;
 import static io.restassured.RestAssured.given;
 
 public class ApiTests {
