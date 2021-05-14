@@ -144,6 +144,7 @@ public class ApiTests {
 
         Pet returnedPet = getPetByIdResponse.as(Pet.class);
 
+
         Assert.assertEquals("Incorrect status code", 200, getPetByIdResponse.statusCode());
         Assert.assertEquals("Names mismatch", addedPet.getName(), returnedPet.getName());
 
