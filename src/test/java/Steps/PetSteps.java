@@ -56,7 +56,7 @@ public class PetSteps {
         Pet addedPetResponse = response.as(Pet.class);
         String expectedStatus = petToAdd.getStatus();
         String actualStatus = addedPetResponse.getStatus();
-        Assert.assertEquals("Wrong status", expectedStatus, actualStatus);
+        Assert.assertEquals("Wrong status", "expectedStatus", actualStatus);
     }
 
     @And("^I change (.*) of the pet to (.*)$")
